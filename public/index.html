@@ -2,14 +2,16 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#000000">
     <title>Музыкальные Координаты</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div id="app">
-        <!-- Экран загрузки / Старт -->
+        <!-- Стартовый экран -->
         <div id="start-screen" class="screen active">
             <div class="start-content">
                 <h1 class="title">МУЗЫКАЛЬНЫЕ<br>КООРДИНАТЫ</h1>
@@ -22,10 +24,10 @@
         <div id="subscribe-modal" class="modal hidden">
             <div class="modal-content">
                 <h3>Музыкальные координаты</h3>
-                <p>Для прохождения подпишись на Warhol, серьёзный канал о музыке и культуре.</p>
+                <p>Для прохождения подпишись на канал, серьёзный канал о музыке и культуре.</p>
                 <div class="modal-buttons">
                     <button id="check-sub-btn" class="btn-secondary">Проверить</button>
-                    <button id="subscribe-btn" class="btn-primary">Подписаться</button>
+                    <button id="subscribe-btn" class="btn-secondary">Подписаться</button>
                 </div>
             </div>
         </div>
@@ -34,33 +36,29 @@
         <div id="quiz-screen" class="screen">
             <div class="quiz-header">
                 <div class="progress-bar">
-                    <div class="progress-fill"></div>
+                    <div class="progress-fill" id="progress-fill"></div>
                 </div>
-                <span class="question-counter">1 / 30</span>
+                <span class="question-counter" id="question-counter">1 / 30</span>
             </div>
             
             <div class="question-container">
-                <div class="meme-image" id="meme-image"></div>
+                <div class="meme-image empty" id="meme-image"></div>
                 <p class="question-text" id="question-text"></p>
             </div>
 
-            <div class="answers-container" id="answers-container">
-                <!-- Варианты ответов генерируются JS -->
-            </div>
+            <div class="answers-container" id="answers-container"></div>
         </div>
 
         <!-- Экран результата -->
         <div id="result-screen" class="screen">
-            <div class="result-content">
-                <h2 class="result-title">ТВОЙ МУЗЫКАЛЬНЫЙ АРХЕТИП</h2>
-                <div class="coordinates-chart">
-                    <canvas id="result-chart"></canvas>
-                    <div class="point" id="result-point"></div>
-                </div>
-                <h3 class="archetype-name" id="archetype-name"></h3>
-                <p class="archetype-desc" id="archetype-desc"></p>
-                <div class="result-percentage" id="result-percentage"></div>
+            <h2 class="result-title">ТВОЙ МУЗЫКАЛЬНЫЙ АРХЕТИП</h2>
+            <div class="coordinates-chart">
+                <canvas id="result-chart"></canvas>
+                <div class="point" id="result-point" style="left: 50%; top: 50%;"></div>
             </div>
+            <h3 class="archetype-name" id="archetype-name"></h3>
+            <p class="archetype-desc" id="archetype-desc"></p>
+            <div class="result-percentage" id="result-percentage"></div>
         </div>
 
         <!-- Экран друзей -->
