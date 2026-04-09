@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Музыкальные Координаты</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Экран загрузки / Старт -->
+        <div id="start-screen" class="screen active">
+            <div class="start-content">
+                <h1 class="title">МУЗЫКАЛЬНЫЕ<br>КООРДИНАТЫ</h1>
+                <button id="start-btn" class="btn-primary">НАЧАТЬ</button>
+                <p class="subtitle">узнай свою тёмную сторону</p>
+            </div>
+        </div>
+
+        <!-- Модалка подписки -->
+        <div id="subscribe-modal" class="modal hidden">
+            <div class="modal-content">
+                <h3>Музыкальные координаты</h3>
+                <p>Для прохождения подпишись на Warhol, серьёзный канал о музыке и культуре.</p>
+                <div class="modal-buttons">
+                    <button id="check-sub-btn" class="btn-secondary">Проверить</button>
+                    <button id="subscribe-btn" class="btn-primary">Подписаться</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Экран теста -->
+        <div id="quiz-screen" class="screen">
+            <div class="quiz-header">
+                <div class="progress-bar">
+                    <div class="progress-fill"></div>
+                </div>
+                <span class="question-counter">1 / 30</span>
+            </div>
+            
+            <div class="question-container">
+                <div class="meme-image" id="meme-image"></div>
+                <p class="question-text" id="question-text"></p>
+            </div>
+
+            <div class="answers-container" id="answers-container">
+                <!-- Варианты ответов генерируются JS -->
+            </div>
+        </div>
+
+        <!-- Экран результата -->
+        <div id="result-screen" class="screen">
+            <div class="result-content">
+                <h2 class="result-title">ТВОЙ МУЗЫКАЛЬНЫЙ АРХЕТИП</h2>
+                <div class="coordinates-chart">
+                    <canvas id="result-chart"></canvas>
+                    <div class="point" id="result-point"></div>
+                </div>
+                <h3 class="archetype-name" id="archetype-name"></h3>
+                <p class="archetype-desc" id="archetype-desc"></p>
+                <div class="result-percentage" id="result-percentage"></div>
+            </div>
+        </div>
+
+        <!-- Экран друзей -->
+        <div id="friends-screen" class="screen">
+            <h2>Друзья</h2>
+            <div class="friends-list" id="friends-list">
+                <p class="empty-state">Пока никто из друзей не прошёл тест</p>
+            </div>
+        </div>
+
+        <!-- Нижняя навигация -->
+        <nav class="bottom-nav" id="bottom-nav">
+            <button class="nav-btn" data-screen="back">
+                <span class="nav-icon">←</span>
+                <span class="nav-label">назад</span>
+            </button>
+            <button class="nav-btn active" data-screen="quiz">
+                <span class="nav-icon">☰</span>
+                <span class="nav-label">Тест</span>
+            </button>
+            <button class="nav-btn disabled" data-screen="result" id="nav-result">
+                <span class="nav-icon">📊</span>
+                <span class="nav-label">Результат</span>
+            </button>
+            <button class="nav-btn" data-screen="friends">
+                <span class="nav-icon">👥</span>
+                <span class="nav-label">Друзья</span>
+            </button>
+            <button class="nav-btn" data-screen="share">
+                <span class="nav-icon">✈</span>
+                <span class="nav-label">Поделиться</span>
+            </button>
+        </nav>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
