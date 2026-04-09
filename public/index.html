@@ -13,11 +13,9 @@
         <!-- Старт -->
         <div id="start-screen" class="screen active">
             <div class="start-content">
-                <div class="logo-area">
-                    <div class="logo-icon">🎵</div>
-                    <h1 class="title">Музыкальные<br>координаты</h1>
-                    <p class="subtitle">Узнай свою тёмную сторону</p>
-                </div>
+                <div class="logo-icon">🎵</div>
+                <h1 class="title">Музыкальные<br>координаты</h1>
+                <p class="subtitle">Узнай свою тёмную сторону</p>
                 <button id="start-btn" class="btn-primary">Начать</button>
             </div>
         </div>
@@ -25,13 +23,14 @@
         <!-- Модалка подписки -->
         <div id="subscribe-modal" class="modal hidden">
             <div class="modal-sheet">
+                <button class="modal-close" id="modal-close">✕</button>
                 <div class="modal-header">
                     <h3 class="modal-title">Подписка на канал</h3>
                     <p class="modal-desc">Для прохождения теста подпишись на канал о музыке и культуре</p>
                 </div>
                 <div class="modal-actions">
                     <button id="subscribe-btn" class="btn-primary">Подписаться</button>
-                    <button id="check-sub-btn" class="btn-outline">Проверить подписку</button>
+                    <button id="check-sub-btn" class="btn-secondary">Проверить подписку</button>
                 </div>
             </div>
         </div>
@@ -45,7 +44,7 @@
             </div>
 
             <div class="question-card">
-                <div class="meme-image empty" id="meme-image">
+                <div class="meme-image" id="meme-image">
                     <img src="" alt="" id="meme-img">
                 </div>
                 <p class="question-text" id="question-text"></p>
@@ -59,16 +58,12 @@
             <div class="result-header">Твой музыкальный архетип</div>
             
             <div class="chart-container">
-                <div class="chart-grid">
-                    <div class="chart-line horizontal"></div>
-                    <div class="chart-line vertical"></div>
-                </div>
-                <div class="chart-labels">
-                    <span class="chart-label top">Элитарное</span>
-                    <span class="chart-label bottom">Массовое</span>
-                    <span class="chart-label left">Андеграунд</span>
-                    <span class="chart-label right">Мейнстрим</span>
-                </div>
+                <div class="chart-line horizontal"></div>
+                <div class="chart-line vertical"></div>
+                <span class="chart-label top">Элитарное</span>
+                <span class="chart-label bottom">Массовое</span>
+                <span class="chart-label left">Андеграунд</span>
+                <span class="chart-label right">Мейнстрим</span>
                 <div class="result-point" id="result-point"></div>
             </div>
 
