@@ -13,7 +13,7 @@ app.use(express.static('public'));
 
 // ===== НАСТРОЙКИ =====
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const CHANNEL_ID = process.env.CHANNEL_ID || '@warholproject';
+const CHANNEL_ID = process.env.CHANNEL_ID || '@MemeCords';
 const PORT = process.env.PORT || 3000;  // Render даёт PORT автоматически
 
 if (!BOT_TOKEN) {
