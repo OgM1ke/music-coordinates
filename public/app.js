@@ -25,7 +25,8 @@ const state = {
     answers: [],
     isSubscribed: false,
     testCompleted: false,
-    result: null
+    result: null,
+    subscriptionChecked: false // Флаг что проверка уже выполнялась
 };
 
 // Вопросы (пример структуры, загружается с сервера)
@@ -44,24 +45,27 @@ async function init() {
     // Загружаем вопросы
     await loadQuestions();
     
-    // Проверяем подписку (из localStorage или API)
-    checkSubscriptionStatus();
+    // Проверяем подписку при старте (чтобы не показывать модалку если уже подписан)
+    await checkSubscriptionStatus();
     
     // Навешиваем обработчики
     setupEventListeners();
     
     // Настраиваем тему Telegram
     setupTelegramTheme();
+    
+    // Если уже подписан, обновляем UI
+    if (state.isSubscribed) {
+        console.log('User already subscribed');
+    }
 }
 
 // Загрузка вопросов
 async function loadQuestions() {
     try {
-        // В реальном приложении загружаем с сервера
         const response = await fetch('/api/questions');
         questions = await response.json();
     } catch (e) {
-        // Fallback: тестовые данные
         questions = generateTestQuestions();
     }
 }
@@ -97,40 +101,71 @@ function getQuestionText(index) {
 
 // ===== ПРОВЕРКА ПОДПИСКИ =====
 async function checkSubscriptionStatus() {
+    // Если уже проверяли и подписаны — не проверяем снова
+    if (state.subscriptionChecked && state.isSubscribed) {
+        return true;
+    }
+    
     const userId = tg.initDataUnsafe?.user?.id;
-    if (!userId) return;
+    if (!userId) {
+        // Пробуем localStorage как fallback
+        const savedSub = localStorage.getItem('subscribed');
+        if (savedSub === 'true') {
+            state.isSubscribed = true;
+            state.subscriptionChecked = true;
+        }
+        return state.isSubscribed;
+    }
     
     try {
         const response = await fetch(`/api/check-subscription?userId=${userId}`);
         const data = await response.json();
+        
         state.isSubscribed = data.subscribed;
+        state.subscriptionChecked = true;
+        
+        // Сохраняем в localStorage для персистентности
+        if (data.subscribed) {
+            localStorage.setItem('subscribed', 'true');
+            localStorage.setItem('subscribed_user_id', userId);
+        }
+        
+        return data.subscribed;
     } catch (e) {
+        console.error('Failed to check subscription:', e);
         // Fallback: проверяем localStorage
-        state.isSubscribed = localStorage.getItem('subscribed') === 'true';
+        const savedSub = localStorage.getItem('subscribed');
+        const savedUserId = localStorage.getItem('subscribed_user_id');
+        
+        if (savedSub === 'true' && savedUserId == userId) {
+            state.isSubscribed = true;
+        }
+        
+        state.subscriptionChecked = true;
+        return state.isSubscribed;
     }
 }
 
+// Функция для ручной проверки (по кнопке)
 async function checkSubscription() {
-    const userId = tg.initDataUnsafe?.user?.id;
-    if (!userId) return false;
-    
-    try {
-        const res = await fetch(`/api/check-subscription?userId=${userId}`);
-        const data = await res.json();
-        return data.subscribed;
-    } catch (e) {
-        return false;
-    }
+    // Сбрасываем флаг чтобы принудительно перепроверить
+    state.subscriptionChecked = false;
+    return await checkSubscriptionStatus();
 }
 
 // ===== ОБРАБОТЧИКИ =====
 
 function setupEventListeners() {
-    // Открыть модалку
-    startBtn?.addEventListener('click', () => {
+    // Открыть модалку или начать тест
+    startBtn?.addEventListener('click', async () => {
+        // Проверяем подписку ещё раз перед показом модалки
+        await checkSubscriptionStatus();
+        
         if (!state.isSubscribed) {
+            // Не подписан — показываем модалку
             modal.classList.remove('hidden');
         } else {
+            // Уже подписан — сразу начинаем тест
             startQuiz();
         }
     });
@@ -151,9 +186,13 @@ function setupEventListeners() {
     // Подписаться — открыть канал
     subscribeBtn?.addEventListener('click', () => {
         tg.openTelegramLink(CONFIG.CHANNEL_URL);
+        
+        // Запускаем периодическую проверку подписки
+        // (на случай если пользователь подпишется в другом окне)
+        startAutoCheck();
     });
 
-    // Проверить подписку
+    // Проверить подписку вручную
     checkSubBtn?.addEventListener('click', async () => {
         checkSubBtn.textContent = 'Проверяем...';
         checkSubBtn.disabled = true;
@@ -161,15 +200,15 @@ function setupEventListeners() {
         const isSubscribed = await checkSubscription();
         
         if (isSubscribed) {
-            state.isSubscribed = true;
-            localStorage.setItem('subscribed', 'true');
+            // Подписан — закрываем модалку и начинаем тест
             modal.classList.add('hidden');
+            resetCheckButton();
             startQuiz();
         } else {
+            // Не подписан — показываем ошибку
             checkSubBtn.textContent = 'Не подписаны';
             setTimeout(() => {
-                checkSubBtn.textContent = 'Проверить подписку';
-                checkSubBtn.disabled = false;
+                resetCheckButton();
             }, 2000);
         }
     });
@@ -193,6 +232,50 @@ function setupEventListeners() {
     });
 }
 
+// Автоматическая проверка подписки (пока модалка открыта)
+let autoCheckInterval = null;
+
+function startAutoCheck() {
+    // Очищаем предыдущий интервал если есть
+    if (autoCheckInterval) {
+        clearInterval(autoCheckInterval);
+    }
+    
+    // Проверяем каждые 3 секунды
+    autoCheckInterval = setInterval(async () => {
+        // Проверяем только если модалка открыта
+        if (modal.classList.contains('hidden')) {
+            clearInterval(autoCheckInterval);
+            autoCheckInterval = null;
+            return;
+        }
+        
+        const isSubscribed = await checkSubscription();
+        
+        if (isSubscribed) {
+            // Подписан — закрываем модалку и начинаем тест
+            clearInterval(autoCheckInterval);
+            autoCheckInterval = null;
+            modal.classList.add('hidden');
+            resetCheckButton();
+            startQuiz();
+        }
+    }, 3000);
+    
+    // Останавливаем проверку через 60 секунд (чтобы не грузить сервер)
+    setTimeout(() => {
+        if (autoCheckInterval) {
+            clearInterval(autoCheckInterval);
+            autoCheckInterval = null;
+        }
+    }, 60000);
+}
+
+function resetCheckButton() {
+    checkSubBtn.textContent = 'Проверить подписку';
+    checkSubBtn.disabled = false;
+}
+
 function startQuiz() {
     state.currentQuestion = 0;
     state.answers = [];
@@ -206,24 +289,38 @@ function showQuestion(index) {
     const question = questions[index];
     
     // Обновляем прогресс
-    document.querySelector('.progress-fill').style.width = `${(index / questions.length) * 100}%`;
-    document.querySelector('.question-counter').textContent = `${index + 1} / ${questions.length}`;
+    const progressFill = document.querySelector('.progress-fill');
+    const questionCounter = document.querySelector('.question-counter');
+    
+    if (progressFill) {
+        progressFill.style.width = `${((index + 1) / questions.length) * 100}%`;
+    }
+    if (questionCounter) {
+        questionCounter.textContent = `${index + 1} / ${questions.length}`;
+    }
     
     // Мем
     const memeContainer = document.getElementById('meme-image');
-    if (question.meme) {
-        memeContainer.innerHTML = `<img src="/memes/${question.meme}" alt="meme">`;
-        memeContainer.classList.remove('empty');
-    } else {
-        memeContainer.innerHTML = '';
-        memeContainer.classList.add('empty');
+    if (memeContainer) {
+        if (question.meme) {
+            memeContainer.innerHTML = `<img src="/memes/${question.meme}" alt="meme">`;
+            memeContainer.classList.remove('empty');
+        } else {
+            memeContainer.innerHTML = '';
+            memeContainer.classList.add('empty');
+        }
     }
     
     // Текст вопроса
-    document.getElementById('question-text').textContent = question.text;
+    const questionText = document.getElementById('question-text');
+    if (questionText) {
+        questionText.textContent = question.text;
+    }
     
     // Варианты ответов
     const container = document.getElementById('answers-container');
+    if (!container) return;
+    
     container.innerHTML = '';
     
     question.options.forEach((option, i) => {
@@ -320,15 +417,21 @@ function calculateScore() {
 function showResult(result) {
     switchScreen('result');
     
-    document.getElementById('archetype-name').textContent = result.archetype;
-    document.getElementById('archetype-desc').textContent = result.description;
-    document.getElementById('result-percentage').textContent = `${result.percentage}%`;
+    const archetypeName = document.getElementById('archetype-name');
+    const archetypeDesc = document.getElementById('archetype-desc');
+    const resultPercentage = document.getElementById('result-percentage');
+    
+    if (archetypeName) archetypeName.textContent = result.archetype;
+    if (archetypeDesc) archetypeDesc.textContent = result.description;
+    if (resultPercentage) resultPercentage.textContent = `${result.percentage}%`;
     
     // Анимация точки на графике
     setTimeout(() => {
         const point = document.getElementById('result-point');
-        point.style.left = `${result.coordinates.x}%`;
-        point.style.top = `${result.coordinates.y}%`;
+        if (point) {
+            point.style.left = `${result.coordinates.x}%`;
+            point.style.top = `${result.coordinates.y}%`;
+        }
     }, 100);
     
     // Рисуем график
@@ -337,12 +440,17 @@ function showResult(result) {
 
 function drawChart() {
     const canvas = document.getElementById('result-chart');
+    if (!canvas) return;
+    
     const ctx = canvas.getContext('2d');
     const size = 280;
     canvas.width = size;
     canvas.height = size;
     
     const center = size / 2;
+    
+    // Очищаем canvas
+    ctx.clearRect(0, 0, size, size);
     
     // Оси
     ctx.strokeStyle = 'rgba(255,255,255,0.2)';
@@ -392,8 +500,12 @@ async function saveResult(result) {
 
 // ===== НАВИГАЦИЯ =====
 function switchScreen(screenName) {
-    Object.values(screens).forEach(s => s.classList.remove('active'));
-    screens[screenName].classList.add('active');
+    Object.values(screens).forEach(s => {
+        if (s) s.classList.remove('active');
+    });
+    if (screens[screenName]) {
+        screens[screenName].classList.add('active');
+    }
     state.currentScreen = screenName;
 }
 
