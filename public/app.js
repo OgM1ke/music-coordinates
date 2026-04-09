@@ -25,11 +25,12 @@ const state = {
     answers: [],
     isSubscribed: false,
     testCompleted: false,
+    testStarted: false, // Флаг что тест уже начат (вопросы показаны)
     result: null,
-    subscriptionChecked: false // Флаг что проверка уже выполнялась
+    subscriptionChecked: false
 };
 
-// Вопросы (пример структуры, загружается с сервера)
+// Вопросы
 let questions = [];
 
 // DOM элементы экранов
@@ -42,22 +43,13 @@ const screens = {
 
 // ===== ИНИЦИАЛИЗАЦИЯ =====
 async function init() {
-    // Загружаем вопросы
     await loadQuestions();
-    
-    // Проверяем подписку при старте (чтобы не показывать модалку если уже подписан)
     await checkSubscriptionStatus();
-    
-    // Навешиваем обработчики
     setupEventListeners();
-    
-    // Настраиваем тему Telegram
     setupTelegramTheme();
     
-    // Если уже подписан, обновляем UI
-    if (state.isSubscribed) {
-        console.log('User already subscribed');
-    }
+    // Показываем стартовый экран
+    switchScreen('start');
 }
 
 // Загрузка вопросов
@@ -100,55 +92,70 @@ function getQuestionText(index) {
 }
 
 // ===== ПРОВЕРКА ПОДПИСКИ =====
-async function checkSubscriptionStatus() {
-    // Если уже проверяли и подписаны — не проверяем снова
-    if (state.subscriptionChecked && state.isSubscribed) {
-        return true;
-    }
-    
-    const userId = tg.initDataUnsafe?.user?.id;
-    if (!userId) {
-        // Пробуем localStorage как fallback
-        const savedSub = localStorage.getItem('subscribed');
-        if (savedSub === 'true') {
-            state.isSubscribed = true;
-            state.subscriptionChecked = true;
-        }
-        return state.isSubscribed;
-    }
+
+// Проверка через Telegram Bot API (рекомендуется)
+// Бот должен быть админом в канале с правами на чтение подписчиков
+async function checkSubscriptionViaBot(userId) {
+    const BOT_TOKEN = 'YOUR_BOT_TOKEN'; // Замени на токен бота
     
     try {
-        const response = await fetch(`/api/check-subscription?userId=${userId}`);
+        const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getChatMember`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: CONFIG.CHANNEL_ID,
+                user_id: userId
+            })
+        });
+        
         const data = await response.json();
         
-        state.isSubscribed = data.subscribed;
+        if (data.ok) {
+            const status = data.result.status;
+            // Пользователь подписан если: member, administrator, creator
+            return ['member', 'administrator', 'creator'].includes(status);
+        }
+        return false;
+    } catch (e) {
+        console.error('Bot API error:', e);
+        return false;
+    }
+}
+
+async function checkSubscriptionStatus() {
+    if (state.subscriptionChecked && state.isSubscribed) return true;
+    
+    const userId = tg.initDataUnsafe?.user?.id;
+    
+    // Пробуем проверить через бота
+    if (userId) {
+        const isSubscribed = await checkSubscriptionViaBot(userId);
+        state.isSubscribed = isSubscribed;
         state.subscriptionChecked = true;
         
-        // Сохраняем в localStorage для персистентности
-        if (data.subscribed) {
+        if (isSubscribed) {
             localStorage.setItem('subscribed', 'true');
             localStorage.setItem('subscribed_user_id', userId);
         }
         
-        return data.subscribed;
-    } catch (e) {
-        console.error('Failed to check subscription:', e);
-        // Fallback: проверяем localStorage
-        const savedSub = localStorage.getItem('subscribed');
-        const savedUserId = localStorage.getItem('subscribed_user_id');
-        
-        if (savedSub === 'true' && savedUserId == userId) {
-            state.isSubscribed = true;
-        }
-        
-        state.subscriptionChecked = true;
-        return state.isSubscribed;
+        return isSubscribed;
     }
+    
+    // Fallback на localStorage
+    const savedSub = localStorage.getItem('subscribed');
+    const savedUserId = localStorage.getItem('subscribed_user_id');
+    
+    if (savedSub === 'true' && savedUserId == userId) {
+        state.isSubscribed = true;
+        state.subscriptionChecked = true;
+        return true;
+    }
+    
+    state.subscriptionChecked = true;
+    return false;
 }
 
-// Функция для ручной проверки (по кнопке)
 async function checkSubscription() {
-    // Сбрасываем флаг чтобы принудительно перепроверить
     state.subscriptionChecked = false;
     return await checkSubscriptionStatus();
 }
@@ -156,27 +163,23 @@ async function checkSubscription() {
 // ===== ОБРАБОТЧИКИ =====
 
 function setupEventListeners() {
-    // Открыть модалку или начать тест
+    // Кнопка "Начать" на стартовом экране
     startBtn?.addEventListener('click', async () => {
-        // Проверяем подписку ещё раз перед показом модалки
         await checkSubscriptionStatus();
         
         if (!state.isSubscribed) {
-            // Не подписан — показываем модалку
             modal.classList.remove('hidden');
         } else {
-            // Уже подписан — сразу начинаем тест
             startQuiz();
         }
     });
 
-    // Закрыть по кнопке ✕
+    // Закрыть модалку
     modalClose?.addEventListener('click', (e) => {
         e.stopPropagation();
         modal.classList.add('hidden');
     });
 
-    // Закрыть по клику вне (на фон)
     modal?.addEventListener('click', (e) => {
         if (e.target === modal) {
             modal.classList.add('hidden');
@@ -186,13 +189,10 @@ function setupEventListeners() {
     // Подписаться — открыть канал
     subscribeBtn?.addEventListener('click', () => {
         tg.openTelegramLink(CONFIG.CHANNEL_URL);
-        
-        // Запускаем периодическую проверку подписки
-        // (на случай если пользователь подпишется в другом окне)
         startAutoCheck();
     });
 
-    // Проверить подписку вручную
+    // Проверить подписку
     checkSubBtn?.addEventListener('click', async () => {
         checkSubBtn.textContent = 'Проверяем...';
         checkSubBtn.disabled = true;
@@ -200,12 +200,10 @@ function setupEventListeners() {
         const isSubscribed = await checkSubscription();
         
         if (isSubscribed) {
-            // Подписан — закрываем модалку и начинаем тест
             modal.classList.add('hidden');
             resetCheckButton();
             startQuiz();
         } else {
-            // Не подписан — показываем ошибку
             checkSubBtn.textContent = 'Не подписаны';
             setTimeout(() => {
                 resetCheckButton();
@@ -219,31 +217,56 @@ function setupEventListeners() {
             if (btn.disabled) return;
             
             const screen = btn.dataset.screen;
-            
-            if (screen === 'result' && !state.testCompleted) {
-                return; // Недоступно
-            }
-            
-            document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            
-            switchScreen(screen);
+            handleNavigation(screen, btn);
         });
     });
 }
 
-// Автоматическая проверка подписки (пока модалка открыта)
+function handleNavigation(screen, btnElement) {
+    // Обновляем активную вкладку
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    btnElement.classList.add('active');
+    
+    if (screen === 'quiz' || screen === 'test') {
+        // При переходе на "Тест" показываем либо старт, либо вопросы
+        if (state.testStarted) {
+            // Тест уже начат — показываем вопросы
+            switchScreen('quiz');
+        } else {
+            // Тест не начат — показываем стартовый экран
+            switchScreen('start');
+        }
+    } else if (screen === 'result') {
+        if (!state.testCompleted) return; // Недоступно
+        switchScreen('result');
+    } else if (screen === 'friends' || screen === 'share') {
+        switchScreen('friends');
+    } else if (screen === 'share-action') {
+        // Кнопка "Поделиться"
+        handleShare();
+    } else {
+        switchScreen(screen);
+    }
+}
+
+function handleShare() {
+    const text = state.result 
+        ? `Мой архетип: ${state.result.archetype}. Бро, а где ты на координатах?`
+        : 'Пройди тест и узнай свои музыкальные координаты!';
+    
+    const url = `https://t.me/${CONFIG.BOT_USERNAME}?start=app`;
+    
+    // Открываем нативный шеринг Telegram
+    tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`);
+}
+
+// Автопроверка подписки
 let autoCheckInterval = null;
 
 function startAutoCheck() {
-    // Очищаем предыдущий интервал если есть
-    if (autoCheckInterval) {
-        clearInterval(autoCheckInterval);
-    }
+    if (autoCheckInterval) clearInterval(autoCheckInterval);
     
-    // Проверяем каждые 3 секунды
     autoCheckInterval = setInterval(async () => {
-        // Проверяем только если модалка открыта
         if (modal.classList.contains('hidden')) {
             clearInterval(autoCheckInterval);
             autoCheckInterval = null;
@@ -253,7 +276,6 @@ function startAutoCheck() {
         const isSubscribed = await checkSubscription();
         
         if (isSubscribed) {
-            // Подписан — закрываем модалку и начинаем тест
             clearInterval(autoCheckInterval);
             autoCheckInterval = null;
             modal.classList.add('hidden');
@@ -262,7 +284,6 @@ function startAutoCheck() {
         }
     }, 3000);
     
-    // Останавливаем проверку через 60 секунд (чтобы не грузить сервер)
     setTimeout(() => {
         if (autoCheckInterval) {
             clearInterval(autoCheckInterval);
@@ -277,9 +298,9 @@ function resetCheckButton() {
 }
 
 function startQuiz() {
+    state.testStarted = true;
     state.currentQuestion = 0;
     state.answers = [];
-    state.testCompleted = false;
     
     switchScreen('quiz');
     showQuestion(0);
@@ -288,7 +309,6 @@ function startQuiz() {
 function showQuestion(index) {
     const question = questions[index];
     
-    // Обновляем прогресс
     const progressFill = document.querySelector('.progress-fill');
     const questionCounter = document.querySelector('.question-counter');
     
@@ -299,7 +319,6 @@ function showQuestion(index) {
         questionCounter.textContent = `${index + 1} / ${questions.length}`;
     }
     
-    // Мем
     const memeContainer = document.getElementById('meme-image');
     if (memeContainer) {
         if (question.meme) {
@@ -311,13 +330,11 @@ function showQuestion(index) {
         }
     }
     
-    // Текст вопроса
     const questionText = document.getElementById('question-text');
     if (questionText) {
         questionText.textContent = question.text;
     }
     
-    // Варианты ответов
     const container = document.getElementById('answers-container');
     if (!container) return;
     
@@ -328,11 +345,8 @@ function showQuestion(index) {
         btn.className = 'answer-btn';
         btn.innerHTML = `<span class="answer-text">${option.text}</span>`;
         
-        // Hover эффект
         btn.addEventListener('mouseenter', () => btn.classList.add('hovered'));
         btn.addEventListener('mouseleave', () => btn.classList.remove('hovered'));
-        
-        // Выбор
         btn.addEventListener('click', () => selectAnswer(index, i, option.value, btn));
         
         container.appendChild(btn);
@@ -340,21 +354,17 @@ function showQuestion(index) {
 }
 
 function selectAnswer(questionIndex, optionIndex, value, btnElement) {
-    // Убираем выделение с других
     document.querySelectorAll('.answer-btn').forEach(btn => {
         btn.classList.remove('selected', 'hovered');
     });
     
-    // Выделяем текущий
     btnElement.classList.add('selected');
     
-    // Сохраняем ответ
     state.answers[questionIndex] = {
         questionId: questions[questionIndex].id,
         value: value
     };
     
-    // Задержка перед следующим вопросом
     setTimeout(() => {
         if (questionIndex < questions.length - 1) {
             state.currentQuestion++;
@@ -368,14 +378,10 @@ function selectAnswer(questionIndex, optionIndex, value, btnElement) {
 function finishTest() {
     state.testCompleted = true;
     
-    // Рассчитываем результат
     const score = calculateScore();
     state.result = score;
     
-    // Сохраняем на сервере
     saveResult(score);
-    
-    // Показываем результат
     showResult(score);
 }
 
@@ -425,7 +431,6 @@ function showResult(result) {
     if (archetypeDesc) archetypeDesc.textContent = result.description;
     if (resultPercentage) resultPercentage.textContent = `${result.percentage}%`;
     
-    // Анимация точки на графике
     setTimeout(() => {
         const point = document.getElementById('result-point');
         if (point) {
@@ -434,7 +439,6 @@ function showResult(result) {
         }
     }, 100);
     
-    // Рисуем график
     drawChart();
 }
 
@@ -449,26 +453,21 @@ function drawChart() {
     
     const center = size / 2;
     
-    // Очищаем canvas
     ctx.clearRect(0, 0, size, size);
     
-    // Оси
     ctx.strokeStyle = 'rgba(255,255,255,0.2)';
     ctx.lineWidth = 1;
     
-    // Вертикальная
     ctx.beginPath();
     ctx.moveTo(center, 20);
     ctx.lineTo(center, size - 20);
     ctx.stroke();
     
-    // Горизонтальная
     ctx.beginPath();
     ctx.moveTo(20, center);
     ctx.lineTo(size - 20, center);
     ctx.stroke();
     
-    // Подписи осей
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.font = '10px SF Pro Display';
     ctx.textAlign = 'center';
@@ -498,7 +497,6 @@ async function saveResult(result) {
     }
 }
 
-// ===== НАВИГАЦИЯ =====
 function switchScreen(screenName) {
     Object.values(screens).forEach(s => {
         if (s) s.classList.remove('active');
