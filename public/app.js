@@ -3,13 +3,20 @@ const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
 
-// Конфигурация
+// ===== КОНФИГ =====
 const CONFIG = {
-    CHANNEL_ID: '@warholproject', // Твой канал
-    CHANNEL_URL: 'https://t.me/warholproject',
-    BOT_USERNAME: 'warholprojectbot',
+    CHANNEL_ID: '@MemeCords',
+    CHANNEL_URL: 'https://t.me/MemeCords',
+    BOT_USERNAME: '@memecordsbot',
     TOTAL_QUESTIONS: 30
 };
+
+// ===== DOM =====
+const modal = document.getElementById('subscribe-modal');
+const modalClose = document.getElementById('modal-close');
+const subscribeBtn = document.getElementById('subscribe-btn');
+const checkSubBtn = document.getElementById('check-sub-btn');
+const startBtn = document.getElementById('start-btn');
 
 // Состояние приложения
 const state = {
@@ -24,7 +31,7 @@ const state = {
 // Вопросы (пример структуры, загружается с сервера)
 let questions = [];
 
-// DOM элементы
+// DOM элементы экранов
 const screens = {
     start: document.getElementById('start-screen'),
     quiz: document.getElementById('quiz-screen'),
@@ -32,13 +39,7 @@ const screens = {
     friends: document.getElementById('friends-screen')
 };
 
-const modal = document.getElementById('subscribe-modal');
-const startBtn = document.getElementById('start-btn');
-const checkSubBtn = document.getElementById('check-sub-btn');
-const subscribeBtn = document.getElementById('subscribe-btn');
-const navButtons = document.querySelectorAll('.nav-btn');
-
-// Инициализация
+// ===== ИНИЦИАЛИЗАЦИЯ =====
 async function init() {
     // Загружаем вопросы
     await loadQuestions();
@@ -94,7 +95,7 @@ function getQuestionText(index) {
     return texts[index % texts.length];
 }
 
-// Проверка подписки
+// ===== ПРОВЕРКА ПОДПИСКИ =====
 async function checkSubscriptionStatus() {
     const userId = tg.initDataUnsafe?.user?.id;
     if (!userId) return;
@@ -109,68 +110,96 @@ async function checkSubscriptionStatus() {
     }
 }
 
-// Обработчики событий
-function setupEventListeners() {
-    // Старт
-    startBtn.addEventListener('click', handleStart);
+async function checkSubscription() {
+    const userId = tg.initDataUnsafe?.user?.id;
+    if (!userId) return false;
     
-    // Модалка подписки
-    checkSubBtn.addEventListener('click', handleCheckSubscription);
-    subscribeBtn.addEventListener('click', () => {
+    try {
+        const res = await fetch(`/api/check-subscription?userId=${userId}`);
+        const data = await res.json();
+        return data.subscribed;
+    } catch (e) {
+        return false;
+    }
+}
+
+// ===== ОБРАБОТЧИКИ =====
+
+function setupEventListeners() {
+    // Открыть модалку
+    startBtn?.addEventListener('click', () => {
+        if (!state.isSubscribed) {
+            modal.classList.remove('hidden');
+        } else {
+            startQuiz();
+        }
+    });
+
+    // Закрыть по кнопке ✕
+    modalClose?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        modal.classList.add('hidden');
+    });
+
+    // Закрыть по клику вне (на фон)
+    modal?.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.classList.add('hidden');
+        }
+    });
+
+    // Подписаться — открыть канал
+    subscribeBtn?.addEventListener('click', () => {
         tg.openTelegramLink(CONFIG.CHANNEL_URL);
     });
-    
+
+    // Проверить подписку
+    checkSubBtn?.addEventListener('click', async () => {
+        checkSubBtn.textContent = 'Проверяем...';
+        checkSubBtn.disabled = true;
+        
+        const isSubscribed = await checkSubscription();
+        
+        if (isSubscribed) {
+            state.isSubscribed = true;
+            localStorage.setItem('subscribed', 'true');
+            modal.classList.add('hidden');
+            startQuiz();
+        } else {
+            checkSubBtn.textContent = 'Не подписаны';
+            setTimeout(() => {
+                checkSubBtn.textContent = 'Проверить подписку';
+                checkSubBtn.disabled = false;
+            }, 2000);
+        }
+    });
+
     // Навигация
-    navButtons.forEach(btn => {
-        btn.addEventListener('click', () => handleNavigation(btn.dataset.screen));
+    document.querySelectorAll('.nav-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (btn.disabled) return;
+            
+            const screen = btn.dataset.screen;
+            
+            if (screen === 'result' && !state.testCompleted) {
+                return; // Недоступно
+            }
+            
+            document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            switchScreen(screen);
+        });
     });
 }
 
-async function handleStart() {
-    if (!state.isSubscribed) {
-        showModal();
-        return;
-    }
-    startTest();
-}
-
-function showModal() {
-    modal.classList.remove('hidden');
-}
-
-function hideModal() {
-    modal.classList.add('hidden');
-}
-
-async function handleCheckSubscription() {
-    checkSubBtn.textContent = 'Проверяем...';
-    checkSubBtn.disabled = true;
-    
-    await checkSubscriptionStatus();
-    
-    if (state.isSubscribed) {
-        hideModal();
-        localStorage.setItem('subscribed', 'true');
-        startTest();
-    } else {
-        checkSubBtn.textContent = 'Не подписаны';
-        checkSubBtn.style.color = 'var(--danger)';
-        setTimeout(() => {
-            checkSubBtn.textContent = 'Проверить';
-            checkSubBtn.style.color = '';
-            checkSubBtn.disabled = false;
-        }, 2000);
-    }
-}
-
-function startTest() {
+function startQuiz() {
     state.currentQuestion = 0;
     state.answers = [];
     state.testCompleted = false;
     
     switchScreen('quiz');
     showQuestion(0);
-    updateNavState();
 }
 
 function showQuestion(index) {
@@ -231,7 +260,8 @@ function selectAnswer(questionIndex, optionIndex, value, btnElement) {
     // Задержка перед следующим вопросом
     setTimeout(() => {
         if (questionIndex < questions.length - 1) {
-            showQuestion(questionIndex + 1);
+            state.currentQuestion++;
+            showQuestion(state.currentQuestion);
         } else {
             finishTest();
         }
@@ -250,7 +280,6 @@ function finishTest() {
     
     // Показываем результат
     showResult(score);
-    updateNavState();
 }
 
 function calculateScore() {
@@ -282,7 +311,7 @@ function calculateScore() {
         archetype,
         description,
         coordinates: {
-            x: Math.random() * 100, // Рассчитывается по реальным ответам
+            x: Math.random() * 100,
             y: Math.random() * 100
         }
     };
@@ -361,64 +390,15 @@ async function saveResult(result) {
     }
 }
 
-// Навигация
-function handleNavigation(screen) {
-    if (screen === 'back') {
-        handleBack();
-        return;
-    }
-    
-    if (screen === 'share') {
-        handleShare();
-        return;
-    }
-    
-    if (screen === 'result' && !state.testCompleted) {
-        return; // Недоступно
-    }
-    
-    switchScreen(screen);
-    updateNavActive(screen);
-}
-
-function handleBack() {
-    if (state.currentScreen === 'quiz' && state.currentQuestion > 0) {
-        state.currentQuestion--;
-        showQuestion(state.currentQuestion);
-    } else if (state.currentScreen !== 'start') {
-        switchScreen('start');
-    }
-}
-
-function handleShare() {
-    const text = `Мой архетип: ${state.result?.archetype || 'неизвестно'}. Бро, а где ты на координатах?`;
-    const url = `https://t.me/${CONFIG.BOT_USERNAME}?start=app`;
-    
-    tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`);
-}
-
+// ===== НАВИГАЦИЯ =====
 function switchScreen(screenName) {
     Object.values(screens).forEach(s => s.classList.remove('active'));
     screens[screenName].classList.add('active');
     state.currentScreen = screenName;
 }
 
-function updateNavActive(screen) {
-    navButtons.forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.screen === screen);
-    });
-}
-
-function updateNavState() {
-    const resultBtn = document.getElementById('nav-result');
-    if (state.testCompleted) {
-        resultBtn.classList.remove('disabled');
-    }
-}
-
 function setupTelegramTheme() {
     if (tg.colorScheme === 'light') {
-        // Переключаем на светлую тему если нужно
         document.documentElement.style.setProperty('--bg-primary', '#ffffff');
         document.documentElement.style.setProperty('--bg-secondary', '#f2f2f7');
         document.documentElement.style.setProperty('--text-primary', '#000000');
